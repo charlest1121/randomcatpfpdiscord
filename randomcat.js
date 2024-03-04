@@ -1,86 +1,95 @@
 const { Client } = require("discord.js-selfbot-v13");
-
 const client = new Client();
+
+let useFallback = false;
+let fallbackActivatedTime = null;
 
 client.on("ready", async () => {
   console.log(`${client.user.username} is ready!`);
   setInterval(async () => {
+    const now = Date.now();
+
+    if (
+      useFallback &&
+      fallbackActivatedTime &&
+      now - fallbackActivatedTime >= 21600000
+    ) {
+      // 6 hours in milliseconds
+      useFallback = false;
+      console.log(
+        "6 hours have passed, attempting to revert back to cataas.com."
+      );
+    }
+
     try {
-      // Dynamically import node-fetch
       const fetch = (await import("node-fetch")).default;
+      let imageUrl;
 
-      // Customization options
-      const options = {
-        type: "gif", // e.g., 'gif'
-        tag: "", // e.g., 'cute'
-        text: "hi", // e.g., 'hello'
-        fontSize: "", // e.g., '50'
-        fontColor: "white", // e.g., 'red'
-        filter: "", // e.g., 'mono'
-        customFilterOptions: {
-          brightness: "",
-          lightness: "",
-          saturation: "",
-          hue: "",
-          red: "",
-          green: "",
-          blue: "",
-        },
-        width: "200",
-        height: "200",
-        json: true, // Set to true to fetch the image URL in JSON format
-      };
+      if (!useFallback) {
+        // Construct the cataas URL with options
+        const options = {
+          type: "",
+          tag: "",
+          text: "",
+          fontSize: "",
+          fontColor: "",
+          filter: "",
+          customFilterOptions: {},
+          width: "200",
+          height: "200",
+          json: true,
+        };
 
-      // Constructing the URL based on the provided options
-      let url = "https://cataas.com/cat";
-      if (options.tag) url += `/${options.tag}`;
-      if (options.text) url += `/says/${options.text}`;
-      if (options.fontSize || options.fontColor)
-        url += `?fontSize=${options.fontSize}&fontColor=${options.fontColor}`;
-      if (options.type) url += `?type=${options.type}`;
-      if (options.filter) {
-        url += `?filter=${options.filter}`;
-        if (options.filter === "custom") {
-          const { brightness, lightness, saturation, hue, red, green, blue } =
-            options.customFilterOptions;
-          url += `&brightness=${brightness}&lightness=${lightness}&saturation=${saturation}&hue=${hue}`;
-          url += `&r=${red}&g=${green}&b=${blue}`;
+        let url = "https://cataas.com/cat";
+        if (options.tag) url += `/${options.tag}`;
+        if (options.text) url += `/says/${options.text}`;
+        if (options.fontSize || options.fontColor)
+          url += `?size=${options.fontSize}&color=${options.fontColor}`;
+        if (options.type)
+          url += (url.includes("?") ? "&" : "?") + `type=${options.type}`;
+        if (options.filter)
+          url += (url.includes("?") ? "&" : "?") + `filter=${options.filter}`;
+        if (options.width || options.height)
+          url +=
+            (url.includes("?") ? "&" : "?") +
+            `width=${options.width}&height=${options.height}`;
+        if (options.json) url += (url.includes("?") ? "&" : "?") + "json=true";
+
+        try {
+          const response = await fetch(url);
+          if (!response.ok)
+            throw new Error(
+              `Failed to fetch from cataas: ${response.statusText}`
+            );
+          const data = await response.json();
+          imageUrl = `https://cataas.com${data.url}`;
+          console.log("Image URL from cataas:", imageUrl);
+        } catch (error) {
+          console.error("Cataas fetch failed, switching to fallback:", error);
+          useFallback = true;
+          fallbackActivatedTime = Date.now();
         }
       }
-      if (options.width || options.height)
-        url += `?width=${options.width}&height=${options.height}`;
-      if (options.json) url += (url.includes("?") ? "&" : "?") + "json=true";
 
-      // Fetching the cat image URL
-      const response = await fetch(url);
-      if (!response.ok)
-        throw new Error(`Failed to fetch image: ${response.statusText}`);
-      const data = await response.json();
-
-      console.log("Full JSON response:", JSON.stringify(data, null, 2));
-      const imageUrl = `https://cataas.com/cat/${data._id}`;
-      console.log("Image URL:", imageUrl);
-
-      if (!data._id) {
-        throw new Error(
-          "Image ID is undefined, cannot construct image URL without it."
-        );
+      if (useFallback) {
+        // Use fallback npm library
+        const randomCatImg = (await import("random-cat-img")).default;
+        const result = await randomCatImg();
+        imageUrl = result.message; // Extract the URL string
+        console.log("Fallback Image URL:", imageUrl);
       }
 
-      // Fetching the actual image
-      const imageResponse = await fetch(imageUrl);
-      if (!imageResponse.ok)
-        throw new Error(`Failed to fetch image: ${imageResponse.statusText}`);
-      const imageBuffer = await imageResponse.arrayBuffer();
-      const buffer = Buffer.from(imageBuffer);
-      await client.user.setAvatar(buffer);
+      // Fetch and set the avatar
+      const response = await fetch(imageUrl);
+      if (!response.ok)
+        throw new Error(`Failed to fetch image: ${response.statusText}`);
+      const imageBuffer = await response.arrayBuffer();
+      await client.user.setAvatar(Buffer.from(imageBuffer));
       console.log("Profile picture updated!");
     } catch (error) {
       console.error("Error updating profile picture:", error);
     }
-  }, 180000); // Change how many times it changes
+  }, 10000); // Update this interval as needed
 });
 
-client.login(
-  "AUTH_TOKEN"
-);
+client.login("AUTH_TOKEN");
